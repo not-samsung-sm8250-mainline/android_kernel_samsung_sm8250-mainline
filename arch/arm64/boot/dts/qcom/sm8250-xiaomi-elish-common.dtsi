@@ -1481,6 +1481,13 @@
 		output-high;
 	};
 
+	keyboard_en_state: keyboard-en-state {
+		pins = "gpio155";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-up;
+	};
+
 	bq2597x_master_int_default: bq2597x-master-int-default {
 		pins = "gpio68";
 		function = "gpio";
@@ -1553,7 +1560,7 @@
 	vdda18-supply = <&vreg_l12a_1p8>;
 	vdda33-supply = <&vreg_l2a_3p1>;
 	status = "okay";
-	pinctrl-0 = <&keyboard_vdd_pin>;
+	pinctrl-0 = <&keyboard_en_state>, <&keyboard_vdd_pin>;
 	pinctrl-names = "default";
 };
 
