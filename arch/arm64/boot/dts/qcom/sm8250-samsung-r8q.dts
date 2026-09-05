@@ -58,3 +58,45 @@
 	firmware-name = "qcom/sm8250/Samsung/r8q/slpi.mbn";
 	status = "okay";
 };
+
+&i2c0 {
+	/* SE0 carries the Maxim MAX77705 companion PMIC + fuel gauge. */
+	status = "okay";
+
+	max77705: pmic@66 {
+		compatible = "maxim,max77705";
+		reg = <0x66>;
+		interrupt-parent = <&pm8150l_gpios>;
+		interrupts = <11 IRQ_TYPE_LEVEL_LOW>;
+		interrupt-controller;
+		#interrupt-cells = <1>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&max77705_int_default>;
+	};
+
+	max77705_charger: charger@69 {
+		compatible = "maxim,max77705-charger";
+		reg = <0x69>;
+		monitored-battery = <&battery>;
+		interrupt-parent = <&max77705>;
+		interrupts = <0>;
+	};
+
+	/* IRQ-less on purpose: telemetry survives MFD probe failure. */
+	fuel-gauge@36 {
+		compatible = "maxim,max77705-battery";
+		reg = <0x36>;
+		maxim,rsns-microohm = <5000>;
+	};
+};
+
+
+&pm8150l_gpios {
+	max77705_int_default: max77705-int-default-state {
+		pins = "gpio11";
+		function = "normal";
+		input-enable;
+		bias-disable;
+		power-source = <0>;
+	};
+};
