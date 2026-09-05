@@ -113,6 +113,45 @@
 		enable-active-high;
 		startup-delay-us = <1000>;
 	};
+	cam_probe_uw: cam-probe-uw {
+		compatible = "r8q,cam-probe";
+		i2c-bus = <&i2c2>;
+		r8q,addresses = <0x2d 0x10 0x1a 0x20 0x21 0x34 0x36>;
+
+		clocks = <&camcc CAM_CC_MCLK1_CLK>;
+		assigned-clocks = <&camcc CAM_CC_MCLK1_CLK>;
+		assigned-clock-rates = <19200000>;
+
+		reset-gpios = <&tlmm 125 GPIO_ACTIVE_LOW>;
+		power-domains = <&camcc TITAN_TOP_GDSC>;
+
+		vddio-supply = <&vreg_l7c_1p8>;
+		avdd-supply = <&vreg_cam_uw>;
+		dvdd-supply = <&vreg_cam_uw>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_uw_default>;
+	};
+	
+	cam_probe_front: cam-probe-front {
+			compatible = "r8q,cam-probe";
+			i2c-bus = <&cci0_i2c1>;
+			r8q,addresses = <0x10 0x1a 0x2d 0x20 0x21 0x34 0x36>;
+	
+			clocks = <&camcc CAM_CC_MCLK2_CLK>;
+			assigned-clocks = <&camcc CAM_CC_MCLK2_CLK>;
+			assigned-clock-rates = <24000000>;
+	
+			reset-gpios = <&tlmm 30 GPIO_ACTIVE_LOW>;
+			power-domains = <&camcc TITAN_TOP_GDSC>;
+	
+			vddio-supply = <&vreg_l7c_1p8>;
+			avdd-supply = <&vreg_cam_front>;
+			dvdd-supply = <&vreg_l3c_1p056>;
+	
+			pinctrl-names = "default";
+			pinctrl-0 = <&cam_front_default>;
+		};
 };
 
 &adsp {
@@ -225,6 +264,51 @@
 		pins = "gpio15";
 		function = "gpio";
 		bias-disable;
+	};
+	cam_uw_default: cam-uw-default-state {
+		mclk-pins {
+			pins = "gpio95";
+			function = "cam_mclk";
+			drive-strength = <4>;
+			bias-disable;
+		};
+
+		rst-pins {
+			pins = "gpio125";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
+
+		ldo-pins {
+			pins = "gpio33";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
+	};
+
+	cam_front_default: cam-front-default-state {
+		mclk-pins {
+			pins = "gpio96";
+			function = "cam_mclk";
+			drive-strength = <4>;
+			bias-disable;
+		};
+
+		rst-pins {
+			pins = "gpio30";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
+
+		ldo-pins {
+			pins = "gpio172";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
 	};
 };
 

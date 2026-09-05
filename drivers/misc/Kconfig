@@ -288,6 +288,17 @@ config HP_ILO
 	  To compile this driver as a module, choose M here: the
 	  module will be called hpilo.
 
+config R8Q_CAMPROBE
+	tristate "Samsung Galaxy S20 FE camera sensor prober"
+	depends on I2C && REGULATOR
+	help
+	  One-shot diagnostic that powers a camera module, reads the
+	  chip-ID registers the common vendors use, and powers back
+	  down. Used to identify the unnamed sensors on the r8q.
+	  Only useful with r8q,cam-probe device tree nodes.
+
+	  If unsure, say N.
+
 config QCOM_COINCELL
 	tristate "Qualcomm coincell charger support"
 	depends on MFD_SPMI_PMIC || COMPILE_TEST
