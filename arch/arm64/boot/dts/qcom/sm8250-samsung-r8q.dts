@@ -8,6 +8,27 @@
 	model = "Samsung Galaxy S20 FE";
 	compatible = "samsung,r8q", "qcom,sm8250";
 	chassis-type = "handset";
+	/* TSP power: discrete LDO on TLMM 92, always-on for bring-up. */
+	vreg_tsp_3p0: regulator-tsp-3p0 {
+		compatible = "regulator-fixed";
+		regulator-name = "tsp_ldo_en";
+		regulator-min-microvolt = <3000000>;
+		regulator-max-microvolt = <3000000>;
+		gpio = <&tlmm 92 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-always-on;
+	};
+
+	/* EB-BG781ABY pack, 4500 mAh typical. */
+	battery: battery {
+		compatible = "simple-battery";
+		voltage-max-design-microvolt = <4350000>;
+		voltage-min-design-microvolt = <3400000>;
+		over-voltage-threshold-microvolt = <4500000>;
+		charge-full-design-microamp-hours = <4500000>;
+		constant-charge-voltage-max-microvolt = <4350000>;
+		constant-charge-current-max-microamp = <1500000>;
+	};
 };
 
 &adsp {
