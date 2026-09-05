@@ -36,6 +36,19 @@
 	status = "okay";
 };
 
+&gmu {
+	status = "okay";
+};
+
+&gpu {
+	status = "okay";
+};
+
+&gpu_zap_shader {
+	/* Samsung-signed zap; generic one is rejected by Samsung TZ. */
+	firmware-name = "qcom/sm8250/a650_zap.mbn";
+};
+
 &cdsp {
 	firmware-name = "qcom/sm8250/Samsung/r8q/cdsp.mbn";
 	status = "okay";
