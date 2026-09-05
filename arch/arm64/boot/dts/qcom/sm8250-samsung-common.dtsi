@@ -20,6 +20,15 @@
 			height = <2400>;
 			stride = <(1080 * 4)>;
 			format = "a8r8g8b8";
+			/* Keep MDSS GDSC on: firmware leaves DPU scanning out. */
+			power-domains = <&dispcc MDSS_GDSC>;
+
+			panel = <&fb_panel>;
+
+			fb_panel: panel-info {
+				width-mm = <68>;
+				height-mm = <151>;
+			};
 		};
 	};
 
