@@ -221,6 +221,11 @@
 			bias-disable;
 		};
 	};
+	ts_int_default: ts-int-default-state {
+		pins = "gpio15";
+		function = "gpio";
+		bias-disable;
+	};
 };
 
 /* QCA6390 Wi-Fi over PCIe0, driven by ath11k. */
@@ -335,4 +340,42 @@
 &i2c2 {
 	clock-frequency = <400000>;
 	status = "okay";
+};
+
+
+/* SE5 (touchscreen bus) runs without GPI DMA on this phone. */
+&gpi_dma0 {
+	status = "okay";
+};
+
+&qupv3_id_0 {
+	status = "okay";
+};
+
+&i2c5 {
+	status = "okay";
+
+	/* Two TSP variants on this bus, only the fitted one ACKs. */
+	touchscreen@20 {
+		compatible = "zinitix,zt7650";
+		reg = <0x20>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <15 IRQ_TYPE_LEVEL_LOW>;
+		vcca-supply = <&vreg_tsp_3p0>;
+		vdd-supply = <&vreg_tsp_3p0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&ts_int_default>;
+		touchscreen-size-x = <1080>;
+		touchscreen-size-y = <2400>;
+	};
+
+	touchscreen@49 {
+		compatible = "samsung,fts5cu56a";
+		reg = <0x49>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <15 IRQ_TYPE_LEVEL_LOW>;
+		avdd-supply = <&vreg_tsp_3p0>;
+		vdd-supply = <&vreg_tsp_3p0>;
+		/* No touchscreen-size: IC reports 0-4095, not pixels. */
+	};
 };
