@@ -4,9 +4,12 @@
 #include <linux/acpi.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
+#include <linux/regulator/consumer.h>
 #include <linux/unaligned.h>
 
 #include <media/v4l2-ctrls.h>
@@ -2167,9 +2170,17 @@ static const struct hi847_mode supported_modes[] = {
 	}
 };
 
+static const char * const hi847_supply_names[] = {
+	"vddio",
+	"avdd",
+	"dvdd",
+};
+
 struct hi847 {
 	struct device *dev;
 	struct clk *clk;
+	struct gpio_desc *reset_gpio;
+	struct regulator_bulk_data supplies[ARRAY_SIZE(hi847_supply_names)];
 
 	struct v4l2_subdev sd;
 	struct media_pad pad;
@@ -2480,12 +2491,13 @@ static const struct v4l2_ctrl_ops hi847_ctrl_ops = {
 
 static int hi847_init_controls(struct hi847 *hi847)
 {
+	struct v4l2_fwnode_device_properties props;
 	struct v4l2_ctrl_handler *ctrl_hdlr;
 	s64 exposure_max, h_blank;
 	int ret;
 
 	ctrl_hdlr = &hi847->ctrl_handler;
-	ret = v4l2_ctrl_handler_init(ctrl_hdlr, 8);
+	ret = v4l2_ctrl_handler_init(ctrl_hdlr, 10);
 	if (ret)
 		return ret;
 
@@ -2540,6 +2552,15 @@ static int hi847_init_controls(struct hi847 *hi847)
 					 V4L2_CID_HFLIP, 0, 1, 1, 0);
 	hi847->vflip = v4l2_ctrl_new_std(ctrl_hdlr, &hi847_ctrl_ops,
 					 V4L2_CID_VFLIP, 0, 1, 1, 0);
+
+	ret = v4l2_fwnode_device_parse(hi847->dev, &props);
+	if (ret)
+		return ret;
+
+	ret = v4l2_ctrl_new_fwnode_properties(ctrl_hdlr, &hi847_ctrl_ops,
+					      &props);
+	if (ret)
+		return ret;
 
 	if (ctrl_hdlr->error)
 		return ctrl_hdlr->error;
@@ -2840,6 +2861,47 @@ check_hwcfg_error:
 	return ret;
 }
 
+static int hi847_power_on(struct device *dev)
+{
+	struct v4l2_subdev *sd = dev_get_drvdata(dev);
+	struct hi847 *hi847 = to_hi847(sd);
+	int ret;
+
+	ret = regulator_bulk_enable(ARRAY_SIZE(hi847->supplies),
+				    hi847->supplies);
+	if (ret)
+		return ret;
+
+	ret = clk_prepare_enable(hi847->clk);
+	if (ret) {
+		regulator_bulk_disable(ARRAY_SIZE(hi847->supplies),
+				       hi847->supplies);
+		return ret;
+	}
+
+	usleep_range(5000, 6000);
+	gpiod_set_value_cansleep(hi847->reset_gpio, 0);
+	usleep_range(10000, 11000);
+
+	return 0;
+}
+
+static int hi847_power_off(struct device *dev)
+{
+	struct v4l2_subdev *sd = dev_get_drvdata(dev);
+	struct hi847 *hi847 = to_hi847(sd);
+
+	gpiod_set_value_cansleep(hi847->reset_gpio, 1);
+	clk_disable_unprepare(hi847->clk);
+	regulator_bulk_disable(ARRAY_SIZE(hi847->supplies), hi847->supplies);
+
+	return 0;
+}
+
+static const struct dev_pm_ops hi847_pm_ops = {
+	SET_RUNTIME_PM_OPS(hi847_power_off, hi847_power_on, NULL)
+};
+
 static void hi847_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
@@ -2849,6 +2911,9 @@ static void hi847_remove(struct i2c_client *client)
 	media_entity_cleanup(&sd->entity);
 	v4l2_ctrl_handler_free(sd->ctrl_handler);
 	pm_runtime_disable(hi847->dev);
+	if (!pm_runtime_status_suspended(hi847->dev))
+		hi847_power_off(hi847->dev);
+	pm_runtime_set_suspended(hi847->dev);
 	mutex_destroy(&hi847->mutex);
 }
 
@@ -2856,6 +2921,7 @@ static int hi847_probe(struct i2c_client *client)
 {
 	struct hi847 *hi847;
 	unsigned long freq;
+	unsigned int i;
 	int ret;
 
 	hi847 = devm_kzalloc(&client->dev, sizeof(*hi847), GFP_KERNEL);
@@ -2868,6 +2934,21 @@ static int hi847_probe(struct i2c_client *client)
 	if (IS_ERR(hi847->clk))
 		return dev_err_probe(hi847->dev, PTR_ERR(hi847->clk),
 				     "failed to get clock\n");
+
+	hi847->reset_gpio = devm_gpiod_get_optional(hi847->dev, "reset",
+						    GPIOD_OUT_HIGH);
+	if (IS_ERR(hi847->reset_gpio))
+		return dev_err_probe(hi847->dev, PTR_ERR(hi847->reset_gpio),
+				     "failed to get reset GPIO\n");
+
+	for (i = 0; i < ARRAY_SIZE(hi847_supply_names); i++)
+		hi847->supplies[i].supply = hi847_supply_names[i];
+
+	ret = devm_regulator_bulk_get(hi847->dev, ARRAY_SIZE(hi847->supplies),
+				      hi847->supplies);
+	if (ret)
+		return dev_err_probe(hi847->dev, ret,
+				     "failed to get supplies\n");
 
 	freq = clk_get_rate(hi847->clk);
 	if (freq != HI847_MCLK)
@@ -2883,10 +2964,15 @@ static int hi847_probe(struct i2c_client *client)
 	}
 
 	v4l2_i2c_subdev_init(&hi847->sd, client, &hi847_subdev_ops);
+
+	ret = hi847_power_on(hi847->dev);
+	if (ret)
+		return dev_err_probe(hi847->dev, ret, "failed to power on\n");
+
 	ret = hi847_identify_module(hi847);
 	if (ret) {
 		dev_err(hi847->dev, "failed to find sensor: %d", ret);
-		return ret;
+		goto probe_error_power_off;
 	}
 
 	mutex_init(&hi847->mutex);
@@ -2917,6 +3003,8 @@ static int hi847_probe(struct i2c_client *client)
 
 	pm_runtime_set_active(hi847->dev);
 	pm_runtime_enable(hi847->dev);
+	pm_runtime_set_autosuspend_delay(hi847->dev, 1000);
+	pm_runtime_use_autosuspend(hi847->dev);
 	pm_runtime_idle(hi847->dev);
 
 	return 0;
@@ -2927,6 +3015,9 @@ probe_error_media_entity_cleanup:
 probe_error_v4l2_ctrl_handler_free:
 	v4l2_ctrl_handler_free(hi847->sd.ctrl_handler);
 	mutex_destroy(&hi847->mutex);
+
+probe_error_power_off:
+	hi847_power_off(hi847->dev);
 
 	return ret;
 }
@@ -2940,10 +3031,18 @@ static const struct acpi_device_id hi847_acpi_ids[] = {
 MODULE_DEVICE_TABLE(acpi, hi847_acpi_ids);
 #endif
 
+static const struct of_device_id hi847_of_match[] = {
+	{ .compatible = "hynix,hi847" },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, hi847_of_match);
+
 static struct i2c_driver hi847_i2c_driver = {
 	.driver = {
 		.name = "hi847",
 		.acpi_match_table = ACPI_PTR(hi847_acpi_ids),
+		.of_match_table = hi847_of_match,
+		.pm = pm_ptr(&hi847_pm_ops),
 	},
 	.probe = hi847_probe,
 	.remove = hi847_remove,
