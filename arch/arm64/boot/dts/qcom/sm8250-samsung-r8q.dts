@@ -81,6 +81,38 @@
 				};
 			};
 		};
+	/* Rear telephoto module LDO, downstream "RCAM3_LDO_EN". */
+	vreg_cam_tele: regulator-cam-tele {
+		compatible = "regulator-fixed";
+		regulator-name = "rcam3_ldo_en";
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		gpio = <&tlmm 135 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <1000>;
+	};
+
+	/* Rear ultra-wide module LDO, downstream "RCAM2_LDO_EN". */
+	vreg_cam_uw: regulator-cam-uw {
+		compatible = "regulator-fixed";
+		regulator-name = "rcam2_ldo_en";
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		gpio = <&tlmm 33 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <1000>;
+	};
+
+	/* Front module LDO, downstream "FCAM_LDO_EN". */
+	vreg_cam_front: regulator-cam-front {
+		compatible = "regulator-fixed";
+		regulator-name = "fcam_ldo_en";
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		gpio = <&tlmm 172 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <1000>;
+	};
 };
 
 &adsp {
@@ -167,6 +199,28 @@
 		drive-strength = <2>;
 		bias-disable;
 	};
+	cam_tele_default: cam-tele-default-state {
+		mclk-pins {
+			pins = "gpio97";
+			function = "cam_mclk";
+			drive-strength = <4>;
+			bias-disable;
+		};
+
+		rst-pins {
+			pins = "gpio78";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
+
+		ldo-pins {
+			pins = "gpio135";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
+	};
 };
 
 /* QCA6390 Wi-Fi over PCIe0, driven by ath11k. */
@@ -195,4 +249,90 @@
 		vddpcie0p9-supply = <&vreg_pmu_pcie_0p9>;
 		vddpcie1p8-supply = <&vreg_pmu_pcie_1p8>;
 	};
+};
+
+/* Rear telephoto: Hi-847 sensor plus AK7375-compatible actuator. */
+&camss {
+	status = "okay";
+
+	vdda-phy-supply = <&vreg_l5a_0p88>;
+	vdda-pll-supply = <&vreg_l9a_1p2>;
+
+	ports {
+		port@2 {
+			csiphy2_ep: endpoint {
+				clock-lanes = <7>;
+				data-lanes = <0 1 2 3>;
+				remote-endpoint = <&hi847_ep>;
+			};
+		};
+	};
+};
+
+&cci1_i2c1 {
+	cam_af_tele: focus@f {
+		compatible = "asahi-kasei,ak7375";
+		reg = <0x0f>;
+
+		vdd-supply = <&vreg_l10a_2p8>;
+		vio-supply = <&vreg_l7c_1p8>;
+	};
+};
+
+&gpi_dma1 {
+	status = "okay";
+};
+
+&qupv3_id_1 {
+	status = "okay";
+};
+
+&i2c10 {
+	clock-frequency = <400000>;
+	status = "okay";
+
+	camera@21 {
+		compatible = "hynix,hi847";
+		reg = <0x21>;
+
+		clocks = <&camcc CAM_CC_MCLK3_CLK>;
+		assigned-clocks = <&camcc CAM_CC_MCLK3_CLK>;
+		assigned-clock-rates = <19200000>;
+
+		reset-gpios = <&tlmm 78 GPIO_ACTIVE_LOW>;
+		power-domains = <&camcc TITAN_TOP_GDSC>;
+
+		vddio-supply = <&vreg_l7c_1p8>;
+		avdd-supply = <&vreg_cam_tele>;
+		dvdd-supply = <&vreg_cam_tele>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_tele_default>;
+
+		lens-focus = <&cam_af_tele>;
+
+		orientation = <1>;
+		rotation = <270>;
+
+		port {
+			hi847_ep: endpoint {
+				data-lanes = <1 2 3 4>;
+				link-frequencies = /bits/ 64 <400000000 200000000>;
+				remote-endpoint = <&csiphy2_ep>;
+			};
+		};
+	};
+};
+
+&cci0 {
+	status = "okay";
+};
+
+&cci1 {
+	status = "okay";
+};
+
+&i2c2 {
+	clock-frequency = <400000>;
+	status = "okay";
 };
