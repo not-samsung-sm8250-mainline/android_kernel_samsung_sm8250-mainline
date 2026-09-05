@@ -7,6 +7,7 @@
  */
 
 #include <linux/ascii85.h>
+#include <linux/dma-mapping.h>
 #include <linux/interconnect.h>
 #include <linux/firmware/qcom/qcom_scm.h>
 #include <linux/kernel.h>
@@ -27,6 +28,11 @@ module_param(address_space_size, ullong, 0600);
 
 static bool zap_available = true;
 
+/* r8q: DT carveout makes Samsung TZ reset the SoC on PAS auth. */
+static bool r8q_zap_dyn;
+MODULE_PARM_DESC(r8q_zap_dyn, "r8q: load zap shader via dma_alloc instead of the DT memory-region");
+module_param(r8q_zap_dyn, bool, 0600);
+
 static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 		u32 pasid)
 {
@@ -38,6 +44,7 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 	phys_addr_t mem_phys;
 	ssize_t mem_size;
 	void *mem_region = NULL;
+	dma_addr_t dyn_dma = 0;
 	int ret;
 
 	if (!IS_ENABLED(CONFIG_ARCH_QCOM)) {
@@ -51,12 +58,16 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 		return -ENODEV;
 	}
 
-	ret = of_reserved_mem_region_to_resource(np, 0, &r);
-	if (ret) {
-		zap_available = false;
-		return ret;
+	if (r8q_zap_dyn) {
+		mem_phys = 0;	/* allocated below once mem_size is known */
+	} else {
+		ret = of_reserved_mem_region_to_resource(np, 0, &r);
+		if (ret) {
+			zap_available = false;
+			return ret;
+		}
+		mem_phys = r.start;
 	}
-	mem_phys = r.start;
 
 	/*
 	 * Check for a firmware-name property.  This is the new scheme
@@ -107,18 +118,30 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 		goto out;
 	}
 
-	if (mem_size > resource_size(&r)) {
-		DRM_DEV_ERROR(dev,
-			"memory region is too small to load the MDT\n");
-		ret = -E2BIG;
-		goto out;
-	}
+	if (r8q_zap_dyn) {
+		mem_region = dma_alloc_coherent(dev, PAGE_ALIGN(mem_size),
+						&dyn_dma, GFP_KERNEL);
+		if (!mem_region) {
+			ret = -ENOMEM;
+			goto out;
+		}
+		mem_phys = dyn_dma;
+		DRM_DEV_INFO(dev, "r8q: zap region dma_alloc'd at %pa (%zd bytes)\n",
+			     &mem_phys, mem_size);
+	} else {
+		if (mem_size > resource_size(&r)) {
+			DRM_DEV_ERROR(dev,
+				"memory region is too small to load the MDT\n");
+			ret = -E2BIG;
+			goto out;
+		}
 
-	/* Allocate memory for the firmware image */
-	mem_region = memremap(mem_phys, mem_size,  MEMREMAP_WC);
-	if (!mem_region) {
-		ret = -ENOMEM;
-		goto out;
+		/* Allocate memory for the firmware image */
+		mem_region = memremap(mem_phys, mem_size,  MEMREMAP_WC);
+		if (!mem_region) {
+			ret = -ENOMEM;
+			goto out;
+		}
 	}
 
 	/*
@@ -158,7 +181,8 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 		DRM_DEV_ERROR(dev, "Unable to authorize the image\n");
 
 out:
-	if (mem_region)
+	/* r8q_zap_dyn region is owned by the secure world after auth. */
+	if (mem_region && !r8q_zap_dyn)
 		memunmap(mem_region);
 
 	release_firmware(fw);
