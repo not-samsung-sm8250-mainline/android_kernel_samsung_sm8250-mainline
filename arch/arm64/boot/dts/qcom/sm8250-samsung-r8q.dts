@@ -379,3 +379,11 @@
 		/* No touchscreen-size: IC reports 0-4095, not pixels. */
 	};
 };
+
+/*
+ * cpu7 never returns from the big-cluster power-collapse state and wedges
+ * the kernel. Drop that idle state on cpus 4-7; little cpus keep theirs.
+ */
+&big_cpu_sleep_0 {
+	status = "disabled";
+};
