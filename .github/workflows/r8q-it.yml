@@ -1,0 +1,19 @@
+name: IT build for r8q
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  push:
+    branches:
+      - r8q/7.2.0-not
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-r8q:
+    uses: ./.github/workflows/build-it.yml
+    with:
+      device: r8q
+      device_name: Galaxy S20 FE

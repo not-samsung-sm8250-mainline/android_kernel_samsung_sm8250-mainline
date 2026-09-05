@@ -1,0 +1,60 @@
+name: IT builder
+
+on:
+  workflow_call:
+    inputs:
+      device:
+        type: string
+        required: true
+      device_name:
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-latest
+    env:
+      DEVICE: ${{ inputs.device }}
+      DEVICE_NAME: ${{ inputs.device_name }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: install deps
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y bc bison flex libssl-dev libelf-dev \
+            dwarves python3 zip jq zstd
+
+      - name: set localversion
+        run: printf '%s' "-r8q-IT" > localversion
+
+      - name: build
+        run: ./build.sh
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: r8q-mainline-${{ github.sha }}
+          path: r8q-mainline-*.zip
+          if-no-files-found: error
+
+      - name: set tag
+        run: |
+          echo "RELEASE_TAG=${DEVICE}-IT-$(date +'%Y%m%d')" >> $GITHUB_ENV
+          echo "RELEASE_NAME=r8q-mainline IT ${DEVICE} $(date +'%d %B %Y')" >> $GITHUB_ENV
+
+      - name: release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_NAME }}
+          files: r8q-mainline-*.zip
+          body: |
+            mainline SM8250 + r8q adaptation
+            commit ${{ github.sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
