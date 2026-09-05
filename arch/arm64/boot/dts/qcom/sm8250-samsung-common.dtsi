@@ -5,6 +5,7 @@
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include "sm8250.dtsi"
 #include "pm8150.dtsi"
+#include "pm8150l.dtsi"
 
 / {
 	chosen {
@@ -30,7 +31,8 @@
 
 		key-vol-up {
 			label = "Volume Up";
-			gpios = <&pm8150_gpios 3 GPIO_ACTIVE_LOW>;
+			/* Wired to pm8150L gpio3 on stock DT, not pm8150. */
+			gpios = <&pm8150l_gpios 3 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEUP>;
 			debounce-interval = <15>;
 			linux,can-disable;
@@ -139,7 +141,7 @@
 	};
 };
 
-&pm8150_gpios {
+&pm8150l_gpios {
 	vol_up_n: vol-up-n-state {
 		pins = "gpio3";
 		function = "normal";
