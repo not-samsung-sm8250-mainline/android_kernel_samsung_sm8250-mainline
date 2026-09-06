@@ -21,6 +21,8 @@
 
 extern bool snapshot_debugbus;
 
+struct page;
+
 enum {
 	ADRENO_FW_PM4 = 0,
 	ADRENO_FW_SQE = 0, /* a6xx */
@@ -206,6 +208,11 @@ struct adreno_gpu {
 	uint32_t chip_id;
 	uint16_t speedbin;
 	const struct adreno_gpu_funcs *funcs;
+
+	/* r8q ZAP memory remains owned until PAS shutdown. */
+	struct page *r8q_zap_pages;
+	unsigned int r8q_zap_order;
+	u32 r8q_zap_pasid;
 
 	struct completion fault_coredump_done;
 

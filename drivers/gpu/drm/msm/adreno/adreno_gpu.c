@@ -7,10 +7,11 @@
  */
 
 #include <linux/ascii85.h>
-#include <linux/dma-mapping.h>
 #include <linux/interconnect.h>
 #include <linux/firmware/qcom/qcom_scm.h>
 #include <linux/kernel.h>
+#include <linux/mm.h>
+#include <linux/of.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/pm_opp.h>
 #include <linux/slab.h>
@@ -28,15 +29,17 @@ module_param(address_space_size, ullong, 0600);
 
 static bool zap_available = true;
 
-/* r8q: DT carveout makes Samsung TZ reset the SoC on PAS auth. */
-static bool r8q_zap_dyn;
-MODULE_PARM_DESC(r8q_zap_dyn, "r8q: load zap shader via dma_alloc instead of the DT memory-region");
-module_param(r8q_zap_dyn, bool, 0600);
+/* r8q: its DT carveout makes Samsung TZ reset the SoC on PAS auth. */
+static bool r8q_zap_uses_dynamic_memory(void)
+{
+	return of_machine_is_compatible("samsung,r8q");
+}
 
 static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 		u32 pasid)
 {
 	struct device *dev = &gpu->pdev->dev;
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	const struct firmware *fw;
 	const char *signed_fwname = NULL;
 	struct device_node *np;
@@ -44,7 +47,10 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 	phys_addr_t mem_phys;
 	ssize_t mem_size;
 	void *mem_region = NULL;
-	dma_addr_t dyn_dma = 0;
+	struct page *dyn_pages = NULL;
+	unsigned int dyn_order = 0;
+	size_t dyn_size = 0;
+	bool use_dynamic_memory = r8q_zap_uses_dynamic_memory();
 	int ret;
 
 	if (!IS_ENABLED(CONFIG_ARCH_QCOM)) {
@@ -58,7 +64,7 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 		return -ENODEV;
 	}
 
-	if (r8q_zap_dyn) {
+	if (use_dynamic_memory) {
 		mem_phys = 0;	/* allocated below once mem_size is known */
 	} else {
 		ret = of_reserved_mem_region_to_resource(np, 0, &r);
@@ -118,16 +124,22 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 		goto out;
 	}
 
-	if (r8q_zap_dyn) {
-		mem_region = dma_alloc_coherent(dev, PAGE_ALIGN(mem_size),
-						&dyn_dma, GFP_KERNEL);
+	if (use_dynamic_memory) {
+		dyn_size = PAGE_ALIGN(mem_size);
+		dyn_order = get_order(dyn_size);
+		dyn_pages = alloc_pages(GFP_KERNEL | __GFP_ZERO, dyn_order);
+		if (!dyn_pages) {
+			ret = -ENOMEM;
+			goto out;
+		}
+		mem_region = page_address(dyn_pages);
 		if (!mem_region) {
 			ret = -ENOMEM;
 			goto out;
 		}
-		mem_phys = dyn_dma;
-		DRM_DEV_INFO(dev, "r8q: zap region dma_alloc'd at %pa (%zd bytes)\n",
-			     &mem_phys, mem_size);
+		mem_phys = page_to_phys(dyn_pages);
+		DRM_DEV_INFO(dev, "r8q: zap region page-allocated at %pa (%zu bytes)\n",
+			     &mem_phys, dyn_size);
 	} else {
 		if (mem_size > resource_size(&r)) {
 			DRM_DEV_ERROR(dev,
@@ -179,10 +191,18 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 		zap_available = false;
 	else if (ret)
 		DRM_DEV_ERROR(dev, "Unable to authorize the image\n");
+	else if (use_dynamic_memory) {
+		/* PAS owns this physically contiguous region until shutdown. */
+		adreno_gpu->r8q_zap_pages = dyn_pages;
+		adreno_gpu->r8q_zap_order = dyn_order;
+		adreno_gpu->r8q_zap_pasid = pasid;
+		dyn_pages = NULL;
+	}
 
 out:
-	/* r8q_zap_dyn region is owned by the secure world after auth. */
-	if (mem_region && !r8q_zap_dyn)
+	if (dyn_pages)
+		__free_pages(dyn_pages, dyn_order);
+	else if (mem_region && !use_dynamic_memory)
 		memunmap(mem_region);
 
 	release_firmware(fw);
@@ -1271,7 +1291,20 @@ void adreno_gpu_cleanup(struct adreno_gpu *adreno_gpu)
 {
 	struct msm_gpu *gpu = &adreno_gpu->base;
 	struct msm_drm_private *priv = gpu->dev ? gpu->dev->dev_private : NULL;
+	int ret;
 	unsigned int i;
+
+	if (adreno_gpu->r8q_zap_pages) {
+		ret = qcom_scm_pas_shutdown(adreno_gpu->r8q_zap_pasid);
+		if (ret) {
+			DRM_DEV_ERROR(&gpu->pdev->dev,
+				      "Unable to shut down r8q ZAP PAS: %d\n", ret);
+		} else {
+			__free_pages(adreno_gpu->r8q_zap_pages,
+				     adreno_gpu->r8q_zap_order);
+			adreno_gpu->r8q_zap_pages = NULL;
+		}
+	}
 
 	for (i = 0; i < ARRAY_SIZE(adreno_gpu->info->fw); i++)
 		release_firmware(adreno_gpu->fw[i]);
