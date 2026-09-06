@@ -1102,6 +1102,10 @@ static int geni_i2c_probe(struct platform_device *pdev)
 	if (desc && desc->no_dma_support) {
 		fifo_disable = false;
 		gi2c->no_dma = true;
+	} else if (device_property_read_bool(dev, "qcom,disable-gpi-dma")) {
+		/* Some boards expose a QUP SE whose FIFO must be used explicitly. */
+		fifo_disable = false;
+		gi2c->no_dma = true;
 	} else {
 		fifo_disable = r8q_force_fifo ? false : (readl_relaxed(gi2c->se.base + GENI_IF_DISABLE_RO) & FIFO_IF_DISABLE);
 	}

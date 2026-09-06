@@ -438,6 +438,8 @@
 
 &i2c5 {
 	status = "okay";
+	/* SE5 is wired for FIFO mode; do not use its GPI DMA channels. */
+	qcom,disable-gpi-dma;
 
 	/* Two TSP variants on this bus, only the fitted one ACKs. */
 	touchscreen@20 {
