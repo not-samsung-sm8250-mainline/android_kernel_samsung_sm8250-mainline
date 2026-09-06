@@ -27,13 +27,16 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y bc bison flex libssl-dev libelf-dev \
-            dwarves python3 zip jq zstd
+            dwarves python3 python3-pip python3-venv zip zstd
+          python3 -m venv "$RUNNER_TEMP/dtschema"
+          "$RUNNER_TEMP/dtschema/bin/pip" install dtschema
+          echo "$RUNNER_TEMP/dtschema/bin" >> "$GITHUB_PATH"
 
       - name: set localversion
         run: printf '%s' "-r8q-IT" > localversion
 
       - name: build
-        run: ./build.sh
+        run: RUN_DTBS_CHECK=1 ./build.sh
 
       - name: upload artifact
         uses: actions/upload-artifact@v4

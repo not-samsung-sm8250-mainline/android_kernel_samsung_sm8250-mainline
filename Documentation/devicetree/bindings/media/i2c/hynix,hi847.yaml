@@ -1,0 +1,115 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/i2c/hynix,hi847.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: SK Hynix Hi-847 Image Sensor
+
+description:
+  The Hi-847 is a raw image sensor controlled over I2C and sending RAW10
+  image data through a four-lane MIPI CSI-2 D-PHY interface.
+
+allOf:
+  - $ref: /schemas/media/video-interface-devices.yaml#
+
+properties:
+  compatible:
+    const: hynix,hi847
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: 19.2 MHz master clock supplied to the sensor.
+    maxItems: 1
+
+  reset-gpios:
+    description: Active low sensor reset GPIO.
+    maxItems: 1
+
+  power-domains:
+    maxItems: 1
+
+  vddio-supply:
+    description: Digital I/O voltage supply, 1.8 V.
+
+  avdd-supply:
+    description: Analog voltage supply.
+
+  dvdd-supply:
+    description: Digital core voltage supply.
+
+  port:
+    description: MIPI CSI-2 transmitter port.
+    $ref: /schemas/graph.yaml#/$defs/port-base
+    additionalProperties: false
+
+    properties:
+      endpoint:
+        $ref: /schemas/media/video-interfaces.yaml#
+        unevaluatedProperties: false
+
+        properties:
+          bus-type:
+            const: 4
+          data-lanes:
+            items:
+              - const: 1
+              - const: 2
+              - const: 3
+              - const: 4
+          link-frequencies:
+            minItems: 2
+            maxItems: 2
+            uniqueItems: true
+            items:
+              enum:
+                - 200000000
+                - 400000000
+
+        required:
+          - data-lanes
+          - link-frequencies
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - reset-gpios
+  - vddio-supply
+  - avdd-supply
+  - dvdd-supply
+  - port
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+
+    i2c {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        camera@21 {
+            compatible = "hynix,hi847";
+            reg = <0x21>;
+            clocks = <&camcc 0>;
+            reset-gpios = <&tlmm 78 GPIO_ACTIVE_LOW>;
+            vddio-supply = <&vreg_l7c_1p8>;
+            avdd-supply = <&vreg_cam_tele>;
+            dvdd-supply = <&vreg_cam_tele>;
+
+            port {
+                endpoint {
+                    bus-type = <4>;
+                    data-lanes = <1 2 3 4>;
+                    link-frequencies = /bits/ 64
+                        <200000000 400000000>;
+                };
+            };
+        };
+    };
+
+...

@@ -405,6 +405,7 @@
 
 		port {
 			hi847_ep: endpoint {
+				bus-type = <4>;
 				data-lanes = <1 2 3 4>;
 				link-frequencies = /bits/ 64 <400000000 200000000>;
 				remote-endpoint = <&csiphy2_ep>;
