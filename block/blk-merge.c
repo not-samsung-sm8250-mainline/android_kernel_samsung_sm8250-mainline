@@ -780,6 +780,10 @@ static struct request *attempt_merge(struct request_queue *q,
 	if (req_op(req) != req_op(next))
 		return NULL;
 
+	if (bio_should_skip_dm_default_key(req->bio) !=
+	    bio_should_skip_dm_default_key(next->bio))
+		return NULL;
+
 	if (req->bio->bi_write_hint != next->bio->bi_write_hint)
 		return NULL;
 	if (req->bio->bi_write_stream != next->bio->bi_write_stream)
@@ -898,6 +902,10 @@ bool blk_rq_merge_ok(struct request *rq, struct bio *bio)
 		return false;
 
 	if (req_op(rq) != bio_op(bio))
+		return false;
+
+	if (bio_should_skip_dm_default_key(rq->bio) !=
+	    bio_should_skip_dm_default_key(bio))
 		return false;
 
 	if (!blk_cgroup_mergeable(rq, bio))
