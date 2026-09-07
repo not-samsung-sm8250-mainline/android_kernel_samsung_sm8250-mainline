@@ -27,8 +27,6 @@ static u64 address_space_size = 0;
 MODULE_PARM_DESC(address_space_size, "Override for size of processes private GPU address space");
 module_param(address_space_size, ullong, 0600);
 
-static bool zap_available = true;
-
 /* r8q: its DT carveout makes Samsung TZ reset the SoC on PAS auth. */
 static bool r8q_zap_uses_dynamic_memory(void)
 {
@@ -54,13 +52,11 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 	int ret;
 
 	if (!IS_ENABLED(CONFIG_ARCH_QCOM)) {
-		zap_available = false;
 		return -EINVAL;
 	}
 
 	np = of_get_available_child_by_name(dev->of_node, "zap-shader");
 	if (!np) {
-		zap_available = false;
 		return -ENODEV;
 	}
 
@@ -68,10 +64,8 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 		mem_phys = 0;	/* allocated below once mem_size is known */
 	} else {
 		ret = of_reserved_mem_region_to_resource(np, 0, &r);
-		if (ret) {
-			zap_available = false;
-			return ret;
-		}
+		if (ret)
+			goto out_put_node;
 		mem_phys = r.start;
 	}
 
@@ -109,12 +103,14 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 		 * was a bad idea, and is only provided for backwards
 		 * compatibility for older targets.
 		 */
-		return -ENOENT;
+		ret = -ENOENT;
+		goto out_put_node;
 	}
 
 	if (IS_ERR(fw)) {
 		DRM_DEV_ERROR(dev, "Unable to load %s\n", fwname);
-		return PTR_ERR(fw);
+		ret = PTR_ERR(fw);
+		goto out_put_node;
 	}
 
 	/* Figure out how much memory we need */
@@ -188,7 +184,7 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 	 * doesn't need/support the zap shader so quietly fail
 	 */
 	if (ret == -EOPNOTSUPP)
-		zap_available = false;
+		ret = -ENODEV;
 	else if (ret)
 		DRM_DEV_ERROR(dev, "Unable to authorize the image\n");
 	else if (use_dynamic_memory) {
@@ -207,6 +203,9 @@ out:
 
 	release_firmware(fw);
 
+out_put_node:
+	of_node_put(np);
+
 	return ret;
 }
 
@@ -214,10 +213,6 @@ int adreno_zap_shader_load(struct msm_gpu *gpu, u32 pasid)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	struct platform_device *pdev = gpu->pdev;
-
-	/* Short cut if we determine the zap shader isn't available/needed */
-	if (!zap_available)
-		return -ENODEV;
 
 	/* We need SCM to be able to load the firmware */
 	if (!qcom_scm_is_available()) {
@@ -1303,6 +1298,7 @@ void adreno_gpu_cleanup(struct adreno_gpu *adreno_gpu)
 			__free_pages(adreno_gpu->r8q_zap_pages,
 				     adreno_gpu->r8q_zap_order);
 			adreno_gpu->r8q_zap_pages = NULL;
+			adreno_gpu->zap_loaded = false;
 		}
 	}
 

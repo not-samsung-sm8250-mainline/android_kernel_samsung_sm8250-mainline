@@ -663,19 +663,21 @@ static int a5xx_zap_shader_resume(struct msm_gpu *gpu)
 
 static int a5xx_zap_shader_init(struct msm_gpu *gpu)
 {
-	static bool loaded;
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	int ret;
 
 	/*
 	 * If the zap shader is already loaded into memory we just need to kick
 	 * the remote processor to reinitialize it
 	 */
-	if (loaded)
+	if (adreno_gpu->zap_loaded)
 		return a5xx_zap_shader_resume(gpu);
 
 	ret = adreno_zap_shader_load(gpu, GPU_PAS_ID);
 
-	loaded = !ret;
+	if (!ret)
+		adreno_gpu->zap_loaded = true;
+
 	return ret;
 }
 

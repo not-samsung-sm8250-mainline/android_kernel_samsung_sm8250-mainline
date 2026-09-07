@@ -213,6 +213,7 @@ struct adreno_gpu {
 	struct page *r8q_zap_pages;
 	unsigned int r8q_zap_order;
 	u32 r8q_zap_pasid;
+	bool zap_loaded;
 
 	struct completion fault_coredump_done;
 

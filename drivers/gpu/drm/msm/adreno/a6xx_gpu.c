@@ -1122,15 +1122,17 @@ static int a6xx_ucode_load(struct msm_gpu *gpu)
 
 int a6xx_zap_shader_init(struct msm_gpu *gpu)
 {
-	static bool loaded;
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	int ret;
 
-	if (loaded)
+	if (adreno_gpu->zap_loaded)
 		return 0;
 
 	ret = adreno_zap_shader_load(gpu, GPU_PAS_ID);
 
-	loaded = !ret;
+	if (!ret)
+		adreno_gpu->zap_loaded = true;
+
 	return ret;
 }
 
