@@ -29,6 +29,18 @@ fi
 mkdir -p out
 ./scripts/kconfig/merge_config.sh -m -O out arch/arm64/configs/defconfig arch/arm64/configs/r8q.config
 make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 olddefconfig
+for required_config in \
+	CONFIG_FS_ENCRYPTION=y \
+	CONFIG_FS_ENCRYPTION_INLINE_CRYPT=y \
+	CONFIG_DRM_SIMPLEDRM=y \
+	CONFIG_DRM_MSM=m \
+	CONFIG_DM_DEFAULT_KEY=y; do
+	if ! grep -qx "$required_config" out/.config; then
+		echo "Missing required kernel config: $required_config" >&2
+		exit 1
+	fi
+done
+
 make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 Image.gz dtbs modules
 
 if [ "${RUN_DTBS_CHECK:-0}" = 1 ]; then
@@ -40,6 +52,17 @@ fi
 
 make O=out ARCH=arm64 LLVM=1 modules_install INSTALL_MOD_PATH="$(pwd)/mods" INSTALL_MOD_STRIP=1
 rm -f mods/lib/modules/*/build mods/lib/modules/*/source
+modules_dep_found=0
+for modules_dep in mods/lib/modules/*/modules.dep; do
+	if [ -f "$modules_dep" ]; then
+		modules_dep_found=1
+		break
+	fi
+done
+[ "$modules_dep_found" -eq 1 ] || {
+	echo "modules.dep missing after modules_install" >&2
+	exit 1
+}
 
 rm -rf pkg && mkdir pkg
 cp "$BOOT_DIR/Image.gz" pkg/

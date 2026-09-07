@@ -35,6 +35,12 @@ properties:
       - const: tx
       - const: rx
 
+  qcom,disable-gpi-dma:
+    type: boolean
+    description:
+      Use the controller FIFO instead of GPI DMA.  This is needed on
+      boards where the QUP serial engine is not wired to usable GPI channels.
+
   interconnects:
     minItems: 2
     maxItems: 3
